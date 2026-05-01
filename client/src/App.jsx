@@ -66,9 +66,9 @@ function App() {
         const containerWidth = entry.contentRect.width;
         const containerHeight = entry.contentRect.height;
         
-        // Scale to fit perfectly inside the flex container with 15% breathing room
-        const scaleByWidth = (containerWidth / A4_WIDTH) * 0.85;
-        const scaleByHeight = (containerHeight / A4_HEIGHT) * 0.85;
+        // Scale to fit perfectly inside the flex container with minimal 5% breathing room
+        const scaleByWidth = (containerWidth / A4_WIDTH) * 0.95;
+        const scaleByHeight = (containerHeight / A4_HEIGHT) * 0.95;
         
         const finalScale = Math.min(scaleByWidth, scaleByHeight, 1.0);
         setPreviewScale(finalScale);
