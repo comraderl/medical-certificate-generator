@@ -4,14 +4,24 @@ import jsPDF from 'jspdf';
 import axios from 'axios';
 import Form from './components/Form';
 import CertificatePreview from './components/CertificatePreview';
-import { format } from 'date-fns';
 
 function App() {
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
   const [data, setData] = useState({
     certificateId: '',
-    departmentName: 'Health and Family Welfare Department',
-    clinicName: 'COMMUNITY HEALTH CENTRE, BAROH',
-    clinicAddress: 'TEH. BAROH, DISTT, KANGRA (H.P)',
+    departmentName: '',
+    clinicName: '',
+    clinicAddress: '',
     clinicLogo: '',
     patientTitle: 'Mr.',
     patientName: '',
@@ -19,11 +29,11 @@ function App() {
     gender: 'Male',
     patientAddress: '',
     diagnosis: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    restDays: '2',
-    endDate: format(new Date(new Date().setDate(new Date().getDate() + 1)), 'yyyy-MM-dd'),
-    instructions: 'Ensure adequate hydration and proper rest. Take prescribed medicines on time.',
+    date: '',
+    startDate: '',
+    restDays: '',
+    endDate: '',
+    instructions: '',
     signatureImage: '',
     stampImage: '',
     patientEmail: ''
@@ -33,24 +43,48 @@ function App() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [previewPdfUrl, setPreviewPdfUrl] = useState('');
   const [pdfBlob, setPdfBlob] = useState(null);
+  
   const certificateRef = useRef(null);
   const formRef = useRef(null);
+  const previewOuterRef = useRef(null);
 
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [passkeyInput, setPasskeyInput] = useState('');
   const [pendingAction, setPendingAction] = useState(null);
-  const CORRECT_PASSKEY = 'CERtificate'; // Configurable passcode
 
-  // Load from local storage and generate initial ID on mount
+  // Fit Engine State
+  const A4_WIDTH = 794;
+  const A4_HEIGHT = 1123;
+  const [previewScale, setPreviewScale] = useState(1);
+  const [scaledHeight, setScaledHeight] = useState(A4_HEIGHT);
+
   useEffect(() => {
-    const savedData = localStorage.getItem('medCertData');
+    if (!previewOuterRef.current) return;
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        // Calculate exact mathematical scale needed to fit the container width
+        const containerWidth = entry.contentRect.width;
+        const newScale = containerWidth / A4_WIDTH;
+        
+        // Cap the scale so it doesn't get ridiculously large on ultrawide monitors
+        const finalScale = Math.min(newScale, 1.2);
+        
+        setPreviewScale(finalScale);
+        setScaledHeight(A4_HEIGHT * finalScale);
+      }
+    });
+    
+    resizeObserver.observe(previewOuterRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const savedData = localStorage.getItem('medCertData_v2');
     if (savedData) {
       setData(prev => ({
         ...prev,
         ...JSON.parse(savedData),
-        // keep some fields default to current
-        date: format(new Date(), 'yyyy-MM-dd'),
-        startDate: format(new Date(), 'yyyy-MM-dd'),
         certificateId: generateCertId()
       }));
     } else {
@@ -58,9 +92,7 @@ function App() {
     }
   }, []);
 
-  // Save to local storage on change
   useEffect(() => {
-    // Only save clinic & doctor details to avoid saving patient specific info
     const toSave = {
       departmentName: data.departmentName,
       clinicName: data.clinicName,
@@ -69,7 +101,7 @@ function App() {
       signatureImage: data.signatureImage,
       stampImage: data.stampImage
     };
-    localStorage.setItem('medCertData', JSON.stringify(toSave));
+    localStorage.setItem('medCertData_v2', JSON.stringify(toSave));
   }, [data]);
 
   const generateCertId = () => {
@@ -91,13 +123,9 @@ function App() {
       { key: 'patientName', label: 'Patient Name' },
       { key: 'age', label: 'Age' },
       { key: 'gender', label: 'Gender' },
-      { key: 'patientAddress', label: 'Patient Address' },
       { key: 'diagnosis', label: 'Diagnosis' },
       { key: 'date', label: 'Certificate Date' },
-      { key: 'startDate', label: 'Start Date' },
-      { key: 'restDays', label: 'Rest Days' },
-      { key: 'signatureImage', label: 'Signature Upload' },
-      { key: 'stampImage', label: 'Stamp Upload' }
+      { key: 'signatureImage', label: 'Signature Upload' }
     ];
 
     for (let field of requiredFields) {
@@ -106,64 +134,122 @@ function App() {
         return false;
       }
     }
-
-    if (formRef.current && !formRef.current.reportValidity()) {
-      return false;
-    }
-
     return true;
   };
 
+
+
   const generatePDFBlob = async () => {
     if (!certificateRef.current) return null;
-
-    // Scale up for better resolution in print
+    
+    // Explicitly enforce scale(1) so the export is strictly 794x1123, unaffected by preview scaling
     const dataUrl = await toPng(certificateRef.current, {
       quality: 0.8,
       pixelRatio: 2,
-      style: {
-        transform: 'scale(1)',
-        transformOrigin: 'top left'
+      style: { 
+        transform: 'scale(1)', 
+        transformOrigin: 'top left',
+        width: `${A4_WIDTH}px`,
+        height: `${A4_HEIGHT}px`
       }
     });
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-
+    
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
-
-    // Force image to cover the exact 8.27 x 11.69 A4 dimensions
     pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
     return pdf.output('blob');
   };
 
   const handlePreviewAndDownload = async () => {
-    if (!validateForm()) {
-      showToast('Please fill out all required fields.', 'error');
+    if (!validateForm()) return;
+    setPendingAction('download');
+    setShowPasskeyModal(true);
+  };
+
+  const handleEmail = async () => {
+    if (!validateForm()) return;
+    if (!data.patientEmail) {
+      showToast('Please enter a patient email address first.', 'error');
       return;
     }
-    setPendingAction('download');
+    setPendingAction('email');
     setShowPasskeyModal(true);
   };
 
   const executeDownload = async () => {
     setIsProcessing(true);
     try {
+      setShowPasskeyModal(false);
+      setPasskeyInput('');
+      
       const blob = await generatePDFBlob();
       if (!blob) throw new Error("Could not generate PDF");
 
       setPdfBlob(blob);
       const url = URL.createObjectURL(blob);
       setPreviewPdfUrl(url);
+      
+      // Auto-generate a new ID for the next certificate
+      setData(prev => ({ ...prev, certificateId: generateCertId() }));
     } catch (error) {
-      console.error(error);
-      showToast('Failed to generate PDF preview.', 'error');
+      showToast(error.message || 'Error generating PDF', 'error');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const executeEmail = async () => {
+    setIsProcessing(true);
+    try {
+      const pdfBlob = await generatePDFBlob();
+      const base64data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(pdfBlob);
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+      });
+
+      const payload = {
+        email: data.patientEmail,
+        certificateBase64: base64data,
+        passkey: passkeyInput
+      };
+
+      const response = await axios.post('/api/send-email', payload, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.data.success) {
+        showToast('Email sent securely to patient!', 'success');
+        setShowPasskeyModal(false);
+        setPasskeyInput('');
+        
+        // Auto-generate a new ID for the next certificate
+        setData(prev => ({ ...prev, certificateId: generateCertId() }));
+      }
+    } catch (error) {
+      showToast(error.response?.data?.error || 'Failed to send email. Invalid passkey?', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePasskeySubmit = () => {
+    if (!passkeyInput.trim()) {
+      showToast('Please enter the passkey.', 'error');
+      return;
+    }
+
+    if (passkeyInput.trim() !== 'CERTificate') {
+      showToast('Invalid Passkey.', 'error');
+      return;
+    }
+
+    if (pendingAction === 'download') {
+      executeDownload();
+    } else if (pendingAction === 'email') {
+      executeEmail();
     }
   };
 
@@ -178,99 +264,39 @@ function App() {
     showToast('PDF downloaded successfully!', 'success');
   };
 
-  const handleEmail = async () => {
-    if (!validateForm()) {
-      showToast('Please fill out all required fields.', 'error');
-      return;
-    }
-    if (!data.patientEmail) {
-      showToast('Please enter a patient email address first.', 'error');
-      return;
-    }
-    setPendingAction('email');
-    setShowPasskeyModal(true);
-  };
-
-  const executeEmail = async () => {
-    setIsProcessing(true);
-    try {
-      const pdfBlob = await generatePDFBlob();
-
-      const base64data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(pdfBlob);
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-      });
-
-      const payload = {
-        email: data.patientEmail,
-        certificateBase64: base64data
-      };
-
-      const response = await axios.post('/api/send-email', payload, {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.data.success) {
-        showToast('Email sent securely to patient!', 'success');
-      } else {
-        throw new Error(response.data.message || 'Failed to send email');
-      }
-    } catch (error) {
-      console.error(error);
-      showToast(error.message || 'Error connecting to the mail server.', 'error');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handlePasskeySubmit = () => {
-    if (passkeyInput === CORRECT_PASSKEY) {
-      setShowPasskeyModal(false);
-      setPasskeyInput('');
-      if (pendingAction === 'download') {
-        executeDownload();
-      } else if (pendingAction === 'email') {
-        executeEmail();
-      }
-    } else {
-      showToast('Invalid Pass Key!', 'error');
-    }
-  };
-
   return (
     <div className="app-container">
       {isProcessing && (
         <div className="loading-overlay">
-          Processing Certificate...
+          <div className="loader"></div>
+          <p>Processing Certificate...</p>
         </div>
       )}
 
       {toast.show && (
-        <div className={`toast-notification toast-${toast.type}`}>
+        <div className={`toast-notification toast-${toast.type} card`}>
           {toast.message}
         </div>
       )}
 
       {/* Passkey Modal */}
       {showPasskeyModal && (
-        <div className="pdf-modal-overlay">
-          <div className="pdf-modal-content" style={{ maxWidth: '400px', textAlign: 'center' }}>
-            <h2 style={{ marginBottom: '20px' }}>Security Check</h2>
-            <p style={{ marginBottom: '15px' }}>Please enter the pass key to authorize this action.</p>
+        <div className="modal-overlay">
+          <div className="modal-content card">
+            <h2>Security Check</h2>
+            <p className="modal-subtitle">
+              Please enter your admin passkey to authorize this action.
+            </p>
             <input 
               type="password" 
+              className="medical-input text-center"
               value={passkeyInput} 
               onChange={(e) => setPasskeyInput(e.target.value)} 
-              placeholder="Enter Pass Key" 
-              style={{ width: '100%', padding: '10px', marginBottom: '20px', fontSize: '16px' }}
+              placeholder="Enter Passkey" 
               autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') handlePasskeySubmit(); }}
             />
-            <div className="modal-actions" style={{ justifyContent: 'center' }}>
+            <div className="modal-actions">
               <button className="btn-secondary" onClick={() => { setShowPasskeyModal(false); setPasskeyInput(''); }}>Cancel</button>
               <button className="btn-primary" onClick={handlePasskeySubmit}>Authorize</button>
             </div>
@@ -278,28 +304,62 @@ function App() {
         </div>
       )}
 
+      {/* Form Section */}
       <div className="form-section">
-        <h1>Generator Dashboard</h1>
-        <p>Fill out the details below. Clinic and Doctor info is auto-saved.</p>
-        <Form
-          data={data}
-          setData={setData}
-          onDownload={handlePreviewAndDownload}
-          onEmail={handleEmail}
-          isProcessing={isProcessing}
-        />
+        <div className="page-header">
+          <div>
+            <h1>Medical Certificate Dashboard</h1>
+            <p className="subtitle">Fill out the details below. Clinic and Doctor info is auto-saved.</p>
+          </div>
+          <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle Theme">
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+        </div>
+        
+        <div className="card form-wrapper">
+          <Form
+            data={data}
+            setData={setData}
+            onDownload={handlePreviewAndDownload}
+            onEmail={handleEmail}
+            isProcessing={isProcessing}
+          />
+        </div>
       </div>
 
+      {/* Live Preview Section */}
       <div className="preview-section">
-        <CertificatePreview ref={certificateRef} data={data} />
+        {/* Layer 1: Outer Container controls layout and tracks width */}
+        <div className="preview-outer-container" ref={previewOuterRef}>
+          {/* Layer 2: Wrapper that holds the exact physical footprint of the scaled inner component */}
+          <div 
+            className="preview-inner-layer"
+            style={{ 
+              width: `${A4_WIDTH * previewScale}px`, 
+              height: `${scaledHeight}px` 
+            }}
+          >
+            {/* The actual unscaled certificate, visually shrunk down via CSS transform */}
+            <div style={{
+              transform: `scale(${previewScale})`,
+              transformOrigin: 'top center',
+              width: `${A4_WIDTH}px`,
+              height: `${A4_HEIGHT}px`,
+              pointerEvents: 'none' // Prevents text selection/dragging
+            }}>
+              <CertificatePreview ref={certificateRef} data={data} />
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* Final PDF Preview Modal */}
       {previewPdfUrl && (
-        <div className="pdf-modal-overlay">
-          <div className="pdf-modal">
-            <div className="pdf-modal-header">
+        <div className="modal-overlay">
+          <div className="modal-content large-modal card">
+            <div className="modal-header">
               <h2>PDF Preview</h2>
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div className="modal-header-actions">
                 <button className="btn-primary" onClick={handleConfirmDownload}>Download Final PDF</button>
                 <button className="btn-secondary" onClick={() => setPreviewPdfUrl('')}>Close</button>
               </div>

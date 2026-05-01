@@ -50,16 +50,16 @@ const Form = ({ data, setData, onDownload, onEmail, isProcessing, formRef }) => 
       <h2 className="section-title">Clinic Details</h2>
       <div className="form-group">
         <label>Department Name</label>
-        <input type="text" name="departmentName" value={data.departmentName} onChange={handleInputChange} placeholder="Health and Family Welfare Department" />
+        <input type="text" name="departmentName" value={data.departmentName} onChange={handleInputChange} placeholder="e.g. Department of General Medicine" />
       </div>
       <div className="grid-2">
         <div className="form-group">
           <label>Clinic/Hospital Name</label>
-          <input type="text" name="clinicName" value={data.clinicName} onChange={handleInputChange} placeholder="COMMUNITY HEALTH CENTRE, BAROH" />
+          <input type="text" name="clinicName" value={data.clinicName} onChange={handleInputChange} placeholder="e.g. City Hospital, Bangalore" />
         </div>
         <div className="form-group">
           <label>Clinic Address</label>
-          <textarea name="clinicAddress" value={data.clinicAddress} onChange={handleInputChange} rows="2" placeholder="TEH. BAROH, DISTT, KANGRA (H.P)"></textarea>
+          <textarea name="clinicAddress" value={data.clinicAddress} onChange={handleInputChange} rows="2" placeholder="e.g. 123 Healthcare Ave, Koramangala, Bangalore 560034"></textarea>
         </div>
       </div>
       <div className="form-group">

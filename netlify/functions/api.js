@@ -8,20 +8,28 @@ const serverless = require('serverless-http');
 const app = express();
 
 // Security Middleware
-app.use(helmet()); // Secures HTTP headers
+app.set('trust proxy', 1); // Fixes ERR_ERL_UNEXPECTED_X_FORWARDED_FOR behind Netlify
+app.use(helmet());
 app.use(cors());
-// Increase the payload limit to allow for large Base64 encoded PDFs
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Rate Limiting to prevent API spam abuse
+// Helper to reliably parse body in serverless environment
+const parseBody = (req) => {
+  if (typeof req.body === 'string') {
+    try { return JSON.parse(req.body); } catch(e) { return {}; }
+  }
+  return req.body || {};
+};
+
+const CORRECT_PASSKEY = 'CERTificate';
+
 const emailLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 email requests per windowMs
-  message: { error: 'Too many emails sent from this IP, please try again after 15 minutes.' }
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many requests from this IP, please try again later.' }
 });
 
-// Create transporter using environment variables
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -32,21 +40,19 @@ const transporter = nodemailer.createTransport({
 
 app.post('/api/send-email', emailLimiter, async (req, res) => {
   try {
-    const { email, certificateBase64 } = req.body;
+    const body = parseBody(req);
+    const { email, certificateBase64, passkey } = body;
 
-    if (!email || !certificateBase64) {
-      return res.status(400).json({ error: 'Patient email and certificate are required.' });
+    if (!email || !certificateBase64 || !passkey) {
+      return res.status(400).json({ error: 'Missing required fields.' });
     }
 
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || process.env.EMAIL_PASS === 'your_16_character_app_password_here') {
-      console.error("Missing valid EMAIL_USER or EMAIL_PASS in .env file.");
-      return res.status(500).json({ error: 'Server email configuration is missing or incomplete.' });
+    if (passkey !== CORRECT_PASSKEY) {
+      return res.status(401).json({ error: 'Invalid Passkey.' });
     }
 
-    // Remove the data URI prefix if it exists
     const base64Data = certificateBase64.replace(/^data:application\/pdf;base64,/, "");
 
-    // send mail with defined transport object
     let info = await transporter.sendMail({
       from: `"Clinic Reception" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -63,17 +69,11 @@ app.post('/api/send-email', emailLimiter, async (req, res) => {
       ]
     });
 
-    console.log("Message sent: %s", info.messageId);
-
-    res.json({ 
-      success: true, 
-      message: 'Email sent successfully!'
-    });
+    res.json({ success: true, message: 'Email sent successfully!' });
   } catch (error) {
     console.error("Error sending email:", error);
     res.status(500).json({ error: 'Failed to send email.' });
   }
 });
 
-// Export the serverless function
 module.exports.handler = serverless(app);
