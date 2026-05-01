@@ -337,9 +337,13 @@ function App() {
             width: `${A4_WIDTH}px`,
             height: `${A4_HEIGHT}px`,
             pointerEvents: 'none',
-            flexShrink: 0
+            flexShrink: 0,
+            position: 'relative'
           }}>
             <CertificatePreview ref={certificateRef} data={data} />
+            
+            {/* Anti-screenshot Watermark (Excluded from PDF because it's outside the ref) */}
+            <div className="watermark-overlay"></div>
           </div>
         </div>
       </div>
