@@ -176,6 +176,13 @@ h1, h2, h3, h4 {
   overflow: hidden; /* Strict no overflow */
 }
 
+@media (max-width: 1023px) {
+  .preview-section {
+    height: 65vh; /* Fixed height on mobile to prevent 1123px overflow */
+    border-top: 1px solid var(--border-light);
+  }
+}
+
 /* Layer 1: Outer Container */
 .preview-outer-container {
   flex: 1;
@@ -188,14 +195,6 @@ h1, h2, h3, h4 {
   padding: var(--space-lg);
 }
 
-/* Layer 2: Inner scaled wrapper is applied inline via React */
-.preview-inner-layer {
-  display: flex;
-  justify-content: center;
-  transform-origin: top center;
-  /* width/height and transform are applied dynamically in React */
-}
-
 /* Typography Hierarchy */
 .section-title {
   font-size: 1.1rem;
@@ -205,6 +204,21 @@ h1, h2, h3, h4 {
   margin-bottom: var(--space-md);
   padding-bottom: var(--space-sm);
   border-bottom: 1px solid var(--border-light);
+}
+
+/* Action Buttons */
+.actions {
+  display: flex;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border-light);
+  flex-wrap: wrap;
+}
+
+.actions button {
+  flex: 1;
+  min-width: 200px;
 }
 
 /* Form Styles */
@@ -492,9 +506,9 @@ button:disabled {
 
 /* Certificate Print Specific Styles */
 .certificate-print {
-  width: 210mm;
-  height: 297mm;
-  padding: 1.5cm 2cm 1cm 2cm;
+  width: 794px;
+  height: 1123px;
+  padding: 56px 75px 38px 75px;
   background: white !important;
   color: black !important;
   box-shadow: 0 4px 20px rgba(0,0,0,0.1);

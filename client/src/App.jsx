@@ -56,22 +56,22 @@ function App() {
   const A4_WIDTH = 794;
   const A4_HEIGHT = 1123;
   const [previewScale, setPreviewScale] = useState(1);
-  const [scaledHeight, setScaledHeight] = useState(A4_HEIGHT);
 
   useEffect(() => {
     if (!previewOuterRef.current) return;
     
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
-        // Calculate exact mathematical scale needed to fit the container width
+        // Calculate exact mathematical scale needed to fit the container
         const containerWidth = entry.contentRect.width;
-        const newScale = containerWidth / A4_WIDTH;
+        const containerHeight = entry.contentRect.height;
         
-        // Cap the scale so it doesn't get ridiculously large on ultrawide monitors
-        const finalScale = Math.min(newScale, 1.2);
+        // Scale to fit perfectly inside the flex container with 15% breathing room
+        const scaleByWidth = (containerWidth / A4_WIDTH) * 0.85;
+        const scaleByHeight = (containerHeight / A4_HEIGHT) * 0.85;
         
+        const finalScale = Math.min(scaleByWidth, scaleByHeight, 1.0);
         setPreviewScale(finalScale);
-        setScaledHeight(A4_HEIGHT * finalScale);
       }
     });
     
@@ -329,26 +329,17 @@ function App() {
 
       {/* Live Preview Section */}
       <div className="preview-section">
-        {/* Layer 1: Outer Container controls layout and tracks width */}
         <div className="preview-outer-container" ref={previewOuterRef}>
-          {/* Layer 2: Wrapper that holds the exact physical footprint of the scaled inner component */}
-          <div 
-            className="preview-inner-layer"
-            style={{ 
-              width: `${A4_WIDTH * previewScale}px`, 
-              height: `${scaledHeight}px` 
-            }}
-          >
-            {/* The actual unscaled certificate, visually shrunk down via CSS transform */}
-            <div style={{
-              transform: `scale(${previewScale})`,
-              transformOrigin: 'top center',
-              width: `${A4_WIDTH}px`,
-              height: `${A4_HEIGHT}px`,
-              pointerEvents: 'none' // Prevents text selection/dragging
-            }}>
-              <CertificatePreview ref={certificateRef} data={data} />
-            </div>
+          {/* The actual unscaled certificate, visually shrunk down via CSS transform from the exact center */}
+          <div style={{
+            transform: `scale(${previewScale})`,
+            transformOrigin: 'center center',
+            width: `${A4_WIDTH}px`,
+            height: `${A4_HEIGHT}px`,
+            pointerEvents: 'none',
+            flexShrink: 0
+          }}>
+            <CertificatePreview ref={certificateRef} data={data} />
           </div>
         </div>
       </div>
